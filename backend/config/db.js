@@ -11,35 +11,41 @@ const connectDB = async () => {
   // 1. If explicit Atlas or remote URI is configured, try connecting with retry logic
   if (uri && !uri.includes('username:password') && uri !== 'in-memory') {
     const isAtlas = uri.includes('mongodb+srv') || uri.includes('mongodb.net');
-    const maxRetries = isAtlas ? 4 : 2;
     const isLocal = uri.includes('127.0.0.1') || uri.includes('localhost');
+    const maxRetries = isAtlas ? 5 : 2;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`Connecting to MongoDB ${isAtlas ? 'Atlas' : 'Server'} (Attempt ${attempt}/${maxRetries})...`);
         const conn = await mongoose.connect(uri, {
-          serverSelectionTimeoutMS: isLocal ? 2000 : 8000,
+          serverSelectionTimeoutMS: isLocal ? 3000 : 15000, // 15s for Atlas
+          connectTimeoutMS: 20000,
+          socketTimeoutMS: 45000,
+          maxPoolSize: 10,
         });
 
         isConnected = true;
         activeHost = conn.connection.host;
-        console.log(`✅ MongoDB Connected successfully: ${conn.connection.host} (DB: ${conn.connection.name})`);
-        
+        console.log(`✅ MongoDB Connected: ${conn.connection.host} (DB: ${conn.connection.name})`);
+
         await seedInitialDataIfNeeded();
         return conn;
       } catch (error) {
         console.warn(`⚠️ Connection attempt ${attempt} failed: ${error.message}`);
         if (attempt < maxRetries) {
-          console.log(`Retrying in 2 seconds...`);
-          await new Promise((r) => setTimeout(r, 2000));
+          const delay = attempt * 2000; // progressive backoff: 2s, 4s, 6s...
+          console.log(`Retrying in ${delay / 1000}s...`);
+          await new Promise((r) => setTimeout(r, delay));
         }
       }
     }
+
+    console.error('❌ All Atlas connection attempts failed. Falling back to in-memory DB.');
   }
 
-  // 2. Fallback to in-memory MongoDB for local evaluation and testing
+  // 2. Fallback to in-memory MongoDB for local dev without Atlas
   try {
-    console.log(`⚡ Initializing In-Memory MongoDB Server as fallback...`);
+    console.log('⚡ Starting In-Memory MongoDB Server as fallback...');
     const { MongoMemoryServer } = require('mongodb-memory-server');
     memoryServerInstance = await MongoMemoryServer.create();
     const memUri = memoryServerInstance.getUri();
@@ -47,14 +53,14 @@ const connectDB = async () => {
     const conn = await mongoose.connect(memUri);
     isConnected = true;
     activeHost = conn.connection.host;
-    console.log(`✅ In-Memory MongoDB Server running at: ${memUri}`);
-    
+    console.log(`✅ In-Memory MongoDB running at: ${memUri}`);
+
     await seedInitialDataIfNeeded();
     return conn;
   } catch (memError) {
     isConnected = false;
     activeHost = 'Not Connected';
-    console.error(`❌ In-Memory MongoDB Error: ${memError.message}`);
+    console.error(`❌ In-Memory MongoDB failed: ${memError.message}`);
   }
 };
 

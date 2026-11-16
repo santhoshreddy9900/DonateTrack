@@ -7,17 +7,27 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 30000, // 30 seconds — allows for MongoDB Atlas cold start
 });
 
 // Response interceptor to extract data or propagate error message cleanly
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      return Promise.reject(
+        new Error('Request timed out. The server may be starting up — please try again in a moment.')
+      );
+    }
+    if (!error.response) {
+      return Promise.reject(
+        new Error('Cannot connect to server. Please make sure the backend is running on port 5000.')
+      );
+    }
     const message =
       error.response?.data?.message ||
       error.message ||
-      'An unexpected error occurred. Please check if the server is running.';
+      'An unexpected error occurred.';
     return Promise.reject(new Error(message));
   }
 );
