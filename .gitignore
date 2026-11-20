@@ -2,7 +2,7 @@
 node_modules/
 */node_modules/
 
-# Environment Variables & Secrets (CRITICAL)
+# Environment Variables & Secrets (CRITICAL — never commit these)
 .env
 .env.local
 .env.development.local
@@ -12,11 +12,12 @@ backend/.env
 frontend/.env
 *.env
 
-# Production Build Output
+# Production Build Output (Vercel builds this itself)
 dist/
 build/
 */dist/
 */build/
+frontend/dist/
 
 # Logs
 logs
