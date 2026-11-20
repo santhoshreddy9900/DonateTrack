@@ -13,23 +13,20 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
-// CORS — allow localhost in dev, Vercel URL in production
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:3000',
-];
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
-}
-
+// CORS — in Vercel Services, frontend and backend share the same public domain,
+// so all browser requests arrive with no cross-origin header (same origin).
+// We also allow localhost for local dev.
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, curl, same-origin on Vercel)
+    // No origin = same-origin requests (Vercel production) or curl/Postman
     if (!origin) return callback(null, true);
-    // On Vercel, frontend and backend are on the same domain — always allow
-    if (process.env.VERCEL === '1') return callback(null, true);
-    if (allowedOrigins.some((o) => origin.startsWith(o))) return callback(null, true);
+    const allowed = [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:3000',
+    ];
+    if (process.env.FRONTEND_URL) allowed.push(process.env.FRONTEND_URL);
+    if (allowed.some((o) => origin.startsWith(o))) return callback(null, true);
     console.warn(`CORS blocked: ${origin}`);
     return callback(null, false);
   },
@@ -47,7 +44,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Health check endpoint
+// Health check
 app.get('/api/health', (req, res) => {
   const dbStatus = getDBStatus();
   res.status(200).json({
@@ -58,14 +55,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Mount API routes
-app.use('/api/donations', require('./routes/donationRoutes'));
-app.use('/api/recipients', require('./routes/recipientRoutes'));
+// API routes
+app.use('/api/donations',     require('./routes/donationRoutes'));
+app.use('/api/recipients',    require('./routes/recipientRoutes'));
 app.use('/api/distributions', require('./routes/distributionRoutes'));
-app.use('/api/inventory', require('./routes/inventoryRoutes'));
-app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/inventory',     require('./routes/inventoryRoutes'));
+app.use('/api/reports',       require('./routes/reportRoutes'));
 
-// 404 handler
+// 404 for unknown API paths
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -76,18 +73,17 @@ app.use((req, res) => {
 // Centralized error handler
 app.use(errorHandler);
 
-// Only start the HTTP server when running locally (not on Vercel serverless)
-if (process.env.VERCEL !== '1') {
-  const PORT = process.env.PORT || 5000;
-  const server = app.listen(PORT, () => {
-    console.log(`🚀 DonateTrack Backend running on http://localhost:${PORT}`);
-  });
+// Always start the HTTP server — Vercel Services runs Express as a
+// long-running process (not serverless), so app.listen() is required.
+const PORT = process.env.PORT || 5000;
+const server = app.listen(PORT, () => {
+  console.log(`🚀 DonateTrack Backend running on port ${PORT}`);
+});
 
-  process.on('unhandledRejection', (err) => {
-    console.error(`Unhandled Rejection: ${err.message}`);
-    server.close(() => process.exit(1));
-  });
-}
+process.on('unhandledRejection', (err) => {
+  console.error(`Unhandled Rejection: ${err.message}`);
+  server.close(() => process.exit(1));
+});
 
-// Export app for Vercel serverless runtime
+// Export for local testing / unit tests
 module.exports = app;
